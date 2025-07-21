@@ -11,10 +11,31 @@ A Python package for fitting Higgs boson data with entropy-aware models, support
 - **Robust Validation**: Comprehensive input validation and error handling
 - **Auto-Detection**: Automatic file format detection and parsing
 
+## Quick Start
+
+```bash
+# 1. Set up environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install iminuit emcee  # For continuous optimization
+
+# 2. Run calibration test
+python fit.py --calibration
+
+# 3. Grid sweep on toy data
+python sweeps.py --calibration
+
+# 4. Batch process all LIGO data
+python sweeps.py  # Grid sweep (fast)
+python batch_fit.py  # Continuous optimization (precise)
+```
+
 ## Installation
 
 ```bash
 pip install -r requirements.txt
+pip install iminuit emcee  # Optional: for continuous optimization
 ```
 
 ## Dependencies
@@ -23,19 +44,35 @@ pip install -r requirements.txt
 - pandas >= 1.3.0
 - scipy >= 1.7.0
 - h5py >= 3.1.0
+- iminuit >= 2.0 (optional, for continuous optimization)
+- emcee >= 3.0 (optional, for MCMC sampling)
 
 ## Usage
 
-### Basic Usage
+### Grid Sweeps (Fast)
 
 ```bash
-# Run entropy fitting on a data file
-python cli.py <data_file> [options]
+# Grid sweep on toy data
+python sweeps.py --calibration
 
-# Examples:
-python cli.py toy.csv --entropy-shape log
-python cli.py "H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5" --entropy-shape log
-python cli.py "data/V1/V-V1_GWOSC_16KHZ_R1-1245035064-32.hdf5"
+# Grid sweep on specific file
+python sweeps.py data/H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5
+
+# Batch process all files in data/
+python sweeps.py
+```
+
+### Continuous Optimization (Precise)
+
+```bash
+# Continuous fit on toy data
+python fit.py --calibration
+
+# Continuous fit on specific file
+python fit.py data/H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5
+
+# Batch continuous fitting (all files)
+python batch_fit.py
 ```
 
 ### File Management
@@ -118,12 +155,22 @@ Higgs_fit/
 
 ## Output
 
-Results are saved to `results/grid_results.csv` with columns:
-- `kappa`: Entropy coupling coefficient
-- `c`: Log-running coefficient
-- `logL`: Log-likelihood value
+### Grid Sweeps
+- `results/grid_results.csv`: Detailed parameter grid with log-likelihood values
+- `results/summary_results.csv`: Best-fit parameters for each data file
 
-The best-fit parameters are printed to console.
+### Continuous Fits
+- `results/fit_results.csv`: Precise optimization results with uncertainties
+- `results/fit_results_master.csv`: Batch continuous fitting results
+
+### Testing
+```bash
+# Run unit tests
+python -m pytest tests/test_fit.py -v
+
+# Manual test
+python tests/test_fit.py
+```
 
 ## Example Results
 
