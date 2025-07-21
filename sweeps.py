@@ -1,9 +1,7 @@
-# version 0.7
+# version 0.8
 """
 Sweep κ and log‑running coefficient c over a 2‑D grid, compute the **Poisson
 log‑likelihood** on binned counts, write a results CSV, and report the best fit.
-
-Debug slice: prints logL at κ ≈ 0.9 across the c‑grid to verify sensitivity.
 """
 
 from pathlib import Path
@@ -17,6 +15,7 @@ from models import get_model
 from entropy import effective_entropy
 from stats import log_poisson_likelihood
 from file_parser import auto_detect_and_parse
+from constants import DEFAULT_BINS, DEFAULT_SCALE
 
 # -----------------------------------------------------------------------------
 # Helper: bin spectra into integer‑like counts
@@ -26,8 +25,8 @@ def make_counts(
     energy: np.ndarray,
     values: np.ndarray,
     *,
-    n_bins: int = 10,
-    scale: float = 200_000.0,
+    n_bins: int = DEFAULT_BINS,
+    scale: float = DEFAULT_SCALE,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (bin_edges, counts, bin_centres) after scaling to pseudo‑counts."""
     bin_edges = np.linspace(energy.min(), energy.max(), n_bins + 1)
@@ -45,8 +44,8 @@ def sweep_grid(
     cfg: Config,
     physics_params: Dict[str, Any],
     *,
-    n_bins: int = 10,
-    scale: float = 200_000.0,
+    n_bins: int = DEFAULT_BINS,
+    scale: float = DEFAULT_SCALE,
     filename: str = "unknown",
     metadata: Dict[str, Any] = None,
 ) -> pd.DataFrame:
