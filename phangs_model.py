@@ -22,6 +22,7 @@ def shock_predict(
     v_s: float,
     kappa_E: float,
     kappa_S: float,
+    log10_M: float = 1.0,
     **kwargs
 ) -> Tuple[float, float]:
     """
@@ -32,32 +33,43 @@ def shock_predict(
         v_s: Shock velocity in km/s
         kappa_E: Elastic coupling parameter (fraction of gas pressure)
         kappa_S: Viscous coupling parameter (fraction of gas pressure)
+        log10_M: Log10 of Mach number (flat prior 0.3-1.3, M = 2-20)
         
     Returns:
         sigma_v_pred: Predicted velocity dispersion in km/s
         I_CO_pred: Predicted CO brightness in K km/s
         
     Notes:
-        Consistent CGS units throughout:
+        Enhanced model with Mach number dependence:
         - Gas pressure: Pg = ρ_cgs * v_cgs^2 / 3
+        - Mach-dependent pressure: P_mach = M^2 * P_thermal
         - Elastic pressure: P_elastic = κ_E * Pg
-        - Velocity dispersion: σ_v = sqrt((Pg + P_elastic) / ρ_cgs)
-        - Viscous losses: ν_loss = κ_S * Pg
+        - Velocity dispersion: σ_v = sqrt((Pg + P_elastic + P_mach) / ρ_cgs)
+        - Viscous losses: ν_loss = κ_S * Pg * M
         - CO brightness: I_CO = c_CO * (Pg + ν_loss)
     """
     # Convert to consistent CGS units
     v_s_cgs = v_s * 1e5  # km/s → cm/s
     rho0_cgs = rho0 * 3.34e-24  # H2 cm^-3 → g cm^-3 (molecular weight ≈ 2 * 1.67e-24)
     
+    # Mach number from log10 parameter
+    M = 10**log10_M
+    
     # Gas pressure from shock compression (standard result)
     Pg = rho0_cgs * v_s_cgs**2 / 3  # erg cm^-3
     
-    # Elastic and viscous contributions as fractions of gas pressure
-    P_elastic = kappa_E * Pg  # erg cm^-3
-    visc_loss = kappa_S * Pg  # erg cm^-3
+    # Mach-dependent thermal pressure enhancement
+    # Assume sound speed ~ 10 km/s for molecular gas
+    cs_cgs = 1e6  # cm/s (typical molecular cloud sound speed)
+    P_thermal = rho0_cgs * cs_cgs**2  # erg cm^-3
+    P_mach = M**2 * P_thermal / 3  # Mach pressure contribution
     
-    # Total pressure
-    P_total = Pg + P_elastic
+    # Elastic and viscous contributions
+    P_elastic = kappa_E * Pg  # erg cm^-3
+    visc_loss = kappa_S * Pg * M  # Mach-enhanced viscous losses
+    
+    # Total pressure including Mach effects
+    P_total = Pg + P_elastic + P_mach
     
     # Velocity dispersion (convert back to km/s)
     sigma_v_pred = np.sqrt(P_total / rho0_cgs) / 1e5  # km/s
@@ -74,10 +86,10 @@ def shock_model_vectorized(
     v_s_array: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Vectorized shock model for multiple shock regions.
+    Vectorized shock model for multiple shock regions with Mach number.
     
     Args:
-        params: Dictionary with kappa_E, kappa_S values
+        params: Dictionary with kappa_E, kappa_S, log10_M values
         rho0_array: Array of upstream densities in cm^-3
         v_s_array: Array of shock velocities in km/s
         
@@ -87,24 +99,37 @@ def shock_model_vectorized(
     """
     kappa_E = params.get('kappa_E', 0.0)
     kappa_S = params.get('kappa_S', 0.0)
+    log10_M = params.get('log10_M', 1.0)
     
     # Ensure arrays
     rho0_array = np.asarray(rho0_array)
     v_s_array = np.asarray(v_s_array)
     
-    # Vectorized calculations
-    v_s_cgs = v_s_array * 1e5
-    rho_mass = rho0_array * 2 * M_H
+    # Mach number
+    M = 10**log10_M
     
-    # Pressures
-    Pg = rho_mass * v_s_cgs**2 / 3
-    P_elastic = kappa_E * rho_mass * v_s_cgs**2
-    P_total = Pg + P_elastic
+    # Convert to CGS units
+    v_s_cgs = v_s_array * 1e5  # km/s → cm/s
+    rho0_cgs = rho0_array * 3.34e-24  # H2 cm^-3 → g cm^-3
+    
+    # Gas pressure from shock compression
+    Pg = rho0_cgs * v_s_cgs**2 / 3  # erg cm^-3
+    
+    # Mach-dependent thermal pressure
+    cs_cgs = 1e6  # cm/s
+    P_thermal = rho0_cgs * cs_cgs**2  # erg cm^-3
+    P_mach = M**2 * P_thermal / 3  # erg cm^-3
+    
+    # Elastic and viscous contributions
+    P_elastic = kappa_E * Pg  # erg cm^-3
+    visc_loss = kappa_S * Pg * M  # Mach-enhanced viscous losses
+    
+    # Total pressure
+    P_total = Pg + P_elastic + P_mach
     
     # Predictions
-    sigma_v_pred = np.sqrt(P_total / rho_mass) / 1e5
-    visc_loss = kappa_S * rho_mass * v_s_cgs**2
-    I_CO_pred = C_CO * (Pg + visc_loss)
+    sigma_v_pred = np.sqrt(P_total / rho0_cgs) / 1e5  # km/s
+    I_CO_pred = C_CO * (Pg + visc_loss)  # K km/s
     
     return sigma_v_pred, I_CO_pred
 
@@ -150,7 +175,7 @@ def general_relativity_prediction(
     v_s_array: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Pure General Relativity prediction (κ_E = κ_S = 0).
+    Pure General Relativity prediction (κ_E = κ_S = 0, log10_M = 1.0).
     
     Args:
         rho0_array: Array of upstream densities in cm^-3
@@ -160,7 +185,7 @@ def general_relativity_prediction(
         sigma_v_GR: GR velocity dispersion predictions
         I_CO_GR: GR CO brightness predictions
     """
-    params_GR = {'kappa_E': 0.0, 'kappa_S': 0.0}
+    params_GR = {'kappa_E': 0.0, 'kappa_S': 0.0, 'log10_M': 1.0}  # M = 10
     return shock_model_vectorized(params_GR, rho0_array, v_s_array)
 
 
@@ -185,7 +210,7 @@ def calculate_test_statistic(
     chi2_best = np.sum(sigma_v_res**2) + np.sum(I_CO_res**2)
     
     # General Relativity chi-squared
-    params_GR = {'kappa_E': 0.0, 'kappa_S': 0.0}
+    params_GR = {'kappa_E': 0.0, 'kappa_S': 0.0, 'log10_M': params_best.get('log10_M', 1.0)}
     sigma_v_res_GR, I_CO_res_GR = shock_residuals(params_GR, shock_data, sigma_frac)
     chi2_GR = np.sum(sigma_v_res_GR**2) + np.sum(I_CO_res_GR**2)
     

@@ -43,9 +43,9 @@ class ShockLikelihood:
         self.sigma_v_err = 0.05 * self.sigma_v_obs  # 5% fractional for velocity dispersion
         self.I_CO_err = np.maximum(0.02 * np.abs(self.I_CO_obs), 0.1)  # 2% fractional, 0.1 K km/s floor
     
-    def __call__(self, kappa_E: float, kappa_S: float) -> float:
+    def __call__(self, kappa_E: float, kappa_S: float, log10_M: float) -> float:
         """Return negative log-likelihood for minimization."""
-        params = {'kappa_E': kappa_E, 'kappa_S': kappa_S}
+        params = {'kappa_E': kappa_E, 'kappa_S': kappa_S, 'log10_M': log10_M}
         
         # Model predictions
         sigma_v_pred, I_CO_pred = shock_model_vectorized(params, self.rho0, self.v_s)
@@ -69,12 +69,14 @@ def fit_shocks_with_iminuit(shock_data: Dict[str, np.ndarray],
     # Create likelihood function
     likelihood = ShockLikelihood(shock_data, sigma_frac)
     
-    # Set up Minuit with tighter parameter space & better seeds
-    m = Minuit(likelihood, kappa_E=0.01, kappa_S=0.05)
+    # Set up Minuit with 3 parameters including Mach number
+    m = Minuit(likelihood, kappa_E=0.01, kappa_S=0.05, log10_M=0.8)
     m.limits["kappa_E"] = (0.0, 0.2)  # Tighter limits
-    m.limits["kappa_S"] = (0.0, 0.5)  # Tighter limits
+    m.limits["kappa_S"] = (0.0, 0.5)  # Tighter limits  
+    m.limits["log10_M"] = (0.3, 1.3)  # Flat prior: M = 2-20
     m.errors["kappa_E"] = 0.001  # Smaller step sizes
     m.errors["kappa_S"] = 0.005
+    m.errors["log10_M"] = 0.01   # Step size for log10_M
     
     # Perform fit
     m.migrad()
@@ -84,9 +86,12 @@ def fit_shocks_with_iminuit(shock_data: Dict[str, np.ndarray],
         'method': 'iminuit',
         'success': m.valid,
         'kappa_E': m.values["kappa_E"],
-        'kappa_S': m.values["kappa_S"],
+        'kappa_S': m.values["kappa_S"],  
+        'log10_M': m.values["log10_M"],
+        'Mach': 10**m.values["log10_M"],  # Also store actual Mach number
         'kappa_E_err': m.errors["kappa_E"] if m.valid else np.nan,
         'kappa_S_err': m.errors["kappa_S"] if m.valid else np.nan,
+        'log10_M_err': m.errors["log10_M"] if m.valid else np.nan,
         'neg_logL': m.fval,
         'logL': -m.fval,
         'nfev': m.nfcn,
@@ -99,11 +104,13 @@ def fit_shocks_with_iminuit(shock_data: Dict[str, np.ndarray],
         result['kappa_E_minos_upper'] = m.merrors["kappa_E"].upper
         result['kappa_S_minos_lower'] = m.merrors["kappa_S"].lower
         result['kappa_S_minos_upper'] = m.merrors["kappa_S"].upper
+        result['log10_M_minos_lower'] = m.merrors["log10_M"].lower
+        result['log10_M_minos_upper'] = m.merrors["log10_M"].upper
     except:
         pass
     
-    # Calculate test statistic vs GR
-    params_best = {'kappa_E': result['kappa_E'], 'kappa_S': result['kappa_S']}
+    # Calculate test statistic vs GR  
+    params_best = {'kappa_E': result['kappa_E'], 'kappa_S': result['kappa_S'], 'log10_M': result['log10_M']}
     lambda_stat = calculate_test_statistic(shock_data, params_best, sigma_frac)
     result['lambda_vs_GR'] = lambda_stat
     
@@ -118,6 +125,8 @@ def print_fit_results(result: Dict[str, Any], n_shocks: int):
     if result['success']:
         print(f"kappa_E = {result['kappa_E']:.4f} ± {result['kappa_E_err']:.4f}")
         print(f"kappa_S = {result['kappa_S']:.4f} ± {result['kappa_S_err']:.4f}")
+        print(f"log10_M = {result['log10_M']:.3f} ± {result['log10_M_err']:.3f}")
+        print(f"Mach = {result['Mach']:.1f}")
         print(f"Log-likelihood: {result['logL']:.3f}")
         print(f"Function evaluations: {result['nfev']}")
         
@@ -129,6 +138,9 @@ def print_fit_results(result: Dict[str, Any], n_shocks: int):
             print(f"kappa_S MINOS: {result['kappa_S']:.4f} "
                   f"+{result['kappa_S_minos_upper']:.4f} "
                   f"{result['kappa_S_minos_lower']:.4f}")
+            print(f"log10_M MINOS: {result['log10_M']:.3f} "
+                  f"+{result['log10_M_minos_upper']:.3f} "
+                  f"{result['log10_M_minos_lower']:.3f}")
         
         # Test statistic
         lambda_val = result.get('lambda_vs_GR', 0)
@@ -136,13 +148,13 @@ def print_fit_results(result: Dict[str, Any], n_shocks: int):
         
         # Significance assessment
         from scipy.stats import chi2
-        p_value = 1 - chi2.cdf(lambda_val, df=2)  # 2 parameters
+        p_value = 1 - chi2.cdf(lambda_val, df=3)  # 3 parameters now
         sigma_equivalent = np.sqrt(chi2.ppf(1 - p_value/2, df=1))
         print(f"p-value vs GR: {p_value:.4f} ({sigma_equivalent:.1f}sigma)")
         
     else:
         print("Fit failed to converge!")
-        print(f"Final parameters: kappa_E={result['kappa_E']:.4f}, kappa_S={result['kappa_S']:.4f}")
+        print(f"Final parameters: kappa_E={result['kappa_E']:.4f}, kappa_S={result['kappa_S']:.4f}, log10_M={result['log10_M']:.3f}")
 
 
 def main():

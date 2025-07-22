@@ -75,6 +75,16 @@ python fit.py data/H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5
 python batch_fit.py
 ```
 
+### PHANGS Shock Fitting
+
+```bash
+# Fit PHANGS-ALMA CO shock data with 3-parameter model
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits
+
+# Parameters: kappa_E, kappa_S (tensor couplings), log10_M (Mach number)
+# Output: JSON results with MINOS errors and significance vs GR
+```
+
 ### File Management
 
 ```bash

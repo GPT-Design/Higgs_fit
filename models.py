@@ -1,4 +1,4 @@
-# version 0.1
+# version 0.2
 """
 Physics model registry and implementations for Higgs entropy fitting.
 """
@@ -84,5 +84,35 @@ def breit_wigner_entropy(energy: np.ndarray, params: dict) -> np.ndarray:
     S_eff = entropy_fn(energy, alpha, S_scalar, m_H=m_H, c=c, beta=beta)
 
     return bw + kappa * S_eff
+
+
+@register_model("phangs_shock")
+def phangs_shock_wrapper(energy: np.ndarray, params: dict) -> np.ndarray:
+    """
+    Wrapper for PHANGS shock model integration.
+    
+    Args:
+        energy: Not used (placeholder for compatibility)
+        params: Dictionary with shock parameters:
+            - rho0: upstream density (cm^-3)
+            - v_s: shock velocity (km/s) 
+            - kappa_E: elastic coupling parameter
+            - kappa_S: viscous coupling parameter
+            
+    Returns:
+        predictions: 2D array [sigma_v_pred, I_CO_pred]
+    """
+    from phangs_model import shock_predict
+    
+    rho0 = params["rho0"]
+    v_s = params["v_s"]
+    kappa_E = params.get("kappa_E", 0.0)
+    kappa_S = params.get("kappa_S", 0.0)
+    
+    # Get predictions
+    sigma_v_pred, I_CO_pred = shock_predict(rho0, v_s, kappa_E, kappa_S)
+    
+    # Return as 2D array so caller can pick channels
+    return np.array([sigma_v_pred, I_CO_pred])
 
 # End of models.py

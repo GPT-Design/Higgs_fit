@@ -1,4 +1,4 @@
-# version 0.3
+# version 0.4
 """
 Configuration for the α‑aware Higgs entropy fit – now supports 2‑D (κ, c) sweeps.
 """
@@ -35,13 +35,18 @@ class Config:
     # Physics model ----------------------------------------------------------
     model: str = "breit_wigner_entropy"
     entropy_shape: str = "log"  # "constant", "powerlaw", "log"
+    phangs_mode: bool = False  # Use PHANGS shock fitting
 
     # -----------------------------------------------------------------------
     # Validation helpers
     # -----------------------------------------------------------------------
     def validate(self) -> None:
         # Handle different modes
-        if self.calibration:
+        if self.phangs_mode:
+            # PHANGS mode - set model and skip standard validation
+            self.model = "phangs_shock"
+            return  # Skip standard file validation for PHANGS
+        elif self.calibration:
             # Use toy.csv for calibration
             self.data_path = Path("toy.csv")
             if not self.data_path.exists():
@@ -89,6 +94,10 @@ def parse_args() -> "Config":
     # calibration mode
     p.add_argument("--calibration", action="store_true", 
                    help="Use toy.csv for calibration (overrides data argument)")
+    
+    # PHANGS mode
+    p.add_argument("--phangs", action="store_true",
+                   help="Use PHANGS shock fitting mode")
 
     # entropy scalars
     p.add_argument("--alpha", type=float, default=0.04)
@@ -115,6 +124,7 @@ def parse_args() -> "Config":
     cfg = Config(
         data_path=a.data,
         calibration=a.calibration,
+        phangs_mode=a.phangs,
         alpha=a.alpha,
         alpha_err=a.alpha_err,
         S_scalar=a.S_scalar,
