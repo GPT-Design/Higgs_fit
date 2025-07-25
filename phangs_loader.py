@@ -240,7 +240,8 @@ def load_phangs_data(
     cube_path: Union[str, Path],
     mask_path: Optional[Union[str, Path]] = None,
     threshold: float = 15.0,
-    min_pixels: int = 5
+    min_pixels: int = 5,
+    noise_file: Optional[Union[str, Path]] = None
 ) -> Tuple[List[Dict], Dict]:
     """
     Main interface: load PHANGS cube and extract shock properties.
@@ -250,6 +251,7 @@ def load_phangs_data(
         mask_path: Optional path to shock mask FITS file
         threshold: Velocity dispersion threshold in km/s (if no mask)
         min_pixels: Minimum pixels per shock region
+        noise_file: Optional path to separate noise FITS file
         
     Returns:
         shocks: List of shock front dictionaries
@@ -282,6 +284,13 @@ def load_phangs_data(
         print(f"Loading shock mask: {mask_path}")
         mask = load_mask(mask_path)
     
+    # Load noise data if provided
+    noise_data = None
+    if noise_file is not None:
+        print(f"Loading noise data: {noise_file}")
+        noise_data, _ = load_co_cube(noise_file)
+        print(f"Noise cube shape: {noise_data.shape}")
+    
     # Extract shocks
     print(f"Extracting shock fronts (threshold={threshold} km/s)...")
     shocks = extract_shock_fronts(data, velocity_axis, threshold, mask, min_pixels)
@@ -295,6 +304,8 @@ def load_phangs_data(
         'min_pixels': min_pixels,
         'n_shocks': len(shocks),
         'velocity_axis': velocity_axis,
+        'noise_file': str(noise_file) if noise_file else None,
+        'has_noise_data': noise_data is not None,
     })
     
     return shocks, metadata

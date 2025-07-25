@@ -82,7 +82,16 @@ python batch_fit.py
 python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits
 
 # Parameters: kappa_E, kappa_S (tensor couplings), log10_M (Mach number)
-# Output: JSON results with MINOS errors and significance vs GR
+# Output: Multiple formats with MINOS errors and significance vs GR
+
+# Specify output formats (default: all formats)
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats json txt csv
+
+# Only human-readable text output
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats txt
+
+# Only spreadsheet format
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats csv
 ```
 
 ### File Management
@@ -109,6 +118,7 @@ Options include:
 - `--kappa-steps STEPS`: Number of κ steps (default: 50)
 - `--c-steps STEPS`: Number of c steps (default: 25)
 - `--output OUTPUT`: Output directory (default: results)
+- `--formats {json,txt,csv}`: Output formats (default: all formats)
 
 ## Data Formats
 
@@ -172,6 +182,35 @@ Higgs_fit/
 ### Continuous Fits
 - `results/fit_results.csv`: Precise optimization results with uncertainties
 - `results/fit_results_master.csv`: Batch continuous fitting results
+
+### PHANGS Shock Fitting Results
+
+The PHANGS shock fitting now supports multiple output formats:
+
+#### JSON Format (Machine-readable)
+- `shock_fit_results.json`: Complete results with all parameters, errors, and metadata
+- Includes MINOS asymmetric errors and statistical significance
+- Suitable for automated analysis and data pipelines
+
+#### TXT Format (Human-readable)
+- `shock_fit_results.txt`: Formatted text report for easy reading
+- Contains all fit parameters with uncertainties
+- Statistical significance assessment vs General Relativity
+- Analysis timestamp and data file information
+
+#### CSV Format (Spreadsheet-compatible)
+- `shock_fit_results.csv`: Single-row data suitable for Excel/LibreOffice
+- All parameters, errors, and statistics in separate columns
+- Perfect for combining multiple analysis results
+- Includes calculated p-values and sigma equivalents
+
+**Example outputs:**
+```
+phangs_results/
+├── shock_fit_results.json    # Complete machine-readable results
+├── shock_fit_results.txt     # Human-readable summary
+└── shock_fit_results.csv     # Spreadsheet-compatible data
+```
 
 ### Testing
 ```bash
