@@ -298,17 +298,24 @@ def main():
         description="Fit PHANGS shock data with magnetised J-shock model"
     )
     
-    parser.add_argument("cube", type=Path, help="Path to CO cube FITS file")
-    parser.add_argument("--mask", type=Path, help="Path to shock mask FITS file")
-    parser.add_argument("--noise", type=Path, help="Path to noise FITS file")
+    parser.add_argument("--cube", type=Path, required=True, 
+                       help="Path to 3D masked CO cube FITS file (*_strictmask.fits)")
+    parser.add_argument("--mask", type=str, default="strict",
+                       help="Mask type: 'strict' for automatic detection or path to mask file")
+    parser.add_argument("--noise", type=Path, required=True,
+                       help="Path to 3D RMS noise cube (*_noise.pbcor.fits)")
+    parser.add_argument("--noise2d", action="store_true",
+                       help="Use 2D error/weight map instead of 3D noise cube")
+    parser.add_argument("--fit-mach", action="store_true", default=True,
+                       help="Fit Mach number (log10_M) as third parameter")
     parser.add_argument("--threshold", type=float, default=15.0,
                        help="Velocity dispersion threshold (km/s) if no mask")
     parser.add_argument("--min-pixels", type=int, default=5,
                        help="Minimum pixels per shock region")
     parser.add_argument("--sigma-frac", type=float, default=0.1,
                        help="Fractional uncertainty (default 10%%)")
-    parser.add_argument("--output", type=Path, default=Path("phangs_results"),
-                       help="Output directory")
+    parser.add_argument("--output", type=Path, default=Path("results"),
+                       help="Output directory (default: results)")
     parser.add_argument("--prefix", type=str, default="shock_fit_results",
                        help="Output file prefix (default: shock_fit_results)")
     parser.add_argument("--formats", nargs='+', choices=['json', 'txt', 'csv'], 
@@ -321,17 +328,31 @@ def main():
     if not args.cube.exists():
         raise FileNotFoundError(f"Cube file not found: {args.cube}")
     
-    if args.mask and not args.mask.exists():
-        raise FileNotFoundError(f"Mask file not found: {args.mask}")
-    
-    if args.noise and not args.noise.exists():
+    if not args.noise.exists():
         raise FileNotFoundError(f"Noise file not found: {args.noise}")
+    
+    # Handle mask detection
+    mask_file = None
+    if args.mask == "strict":
+        # Automatic detection: cube should be *_strictmask.fits, look for corresponding mask
+        cube_name = args.cube.name
+        if "_strictmask.fits" in cube_name:
+            # The cube IS already the masked cube - no separate mask needed
+            print("Using masked cube directly (no separate mask file needed)")
+            mask_file = None
+        else:
+            raise ValueError(f"Expected cube name to contain '_strictmask.fits', got: {cube_name}")
+    else:
+        # Explicit mask file path
+        mask_file = Path(args.mask)
+        if not mask_file.exists():
+            raise FileNotFoundError(f"Mask file not found: {mask_file}")
     
     # Load data
     print("Loading PHANGS data...")
     shocks, metadata = load_phangs_data(
         args.cube, 
-        args.mask, 
+        mask_file, 
         args.threshold, 
         args.min_pixels,
         noise_file=args.noise
@@ -364,8 +385,10 @@ def main():
     metadata = {
         'n_shocks': len(shocks),
         'cube_file': str(args.cube),
-        'mask_file': str(args.mask) if args.mask else None,
-        'noise_file': str(args.noise) if args.noise else None,
+        'mask_file': str(mask_file) if mask_file else "strict (embedded in cube)",
+        'noise_file': str(args.noise),
+        'noise2d': args.noise2d,
+        'fit_mach': args.fit_mach,
         'threshold': args.threshold,
         'sigma_frac': args.sigma_frac,
     }
