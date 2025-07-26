@@ -17,12 +17,21 @@ K_B = 1.38e-16  # erg K^-1, Boltzmann constant
 RHO_SCALE = 1e-21  # Mass density scaling to avoid numerical issues
 
 
+def sound_speed(T_K: float) -> float:
+    """
+    Isothermal sound speed for mean molecular weight 2.33 m_H.
+    Eq: c_s = 0.57 * sqrt(T/100 K) km/s  (approx)
+    """
+    return 0.57 * (T_K / 100.0) ** 0.5   # km s^-1
+
+
 def shock_predict(
     rho0: float,
     v_s: float,
     kappa_E: float,
     kappa_S: float,
     log10_M: float = 1.0,
+    sound_speed_km_s: float = 0.22,
     **kwargs
 ) -> Tuple[float, float]:
     """
@@ -59,8 +68,8 @@ def shock_predict(
     Pg = rho0_cgs * v_s_cgs**2 / 3  # erg cm^-3
     
     # Mach-dependent thermal pressure enhancement
-    # Assume sound speed ~ 10 km/s for molecular gas
-    cs_cgs = 1e6  # cm/s (typical molecular cloud sound speed)
+    # Use temperature-dependent sound speed
+    cs_cgs = sound_speed_km_s * 1e5  # km/s → cm/s
     P_thermal = rho0_cgs * cs_cgs**2  # erg cm^-3
     P_mach = M**2 * P_thermal / 3  # Mach pressure contribution
     
@@ -71,8 +80,9 @@ def shock_predict(
     # Total pressure including Mach effects
     P_total = Pg + P_elastic + P_mach
     
-    # Velocity dispersion (convert back to km/s)
-    sigma_v_pred = np.sqrt(P_total / rho0_cgs) / 1e5  # km/s
+    # Direct relation: sigma_1d = M * c_s / sqrt(3)
+    # Bypasses problematic pressure calculation
+    sigma_v_pred = (M * sound_speed_km_s) / np.sqrt(3.0)  # km/s
     
     # CO brightness (calibrated for PHANGS observations)
     I_CO_pred = C_CO * (Pg + visc_loss)  # K km/s
@@ -83,7 +93,8 @@ def shock_predict(
 def shock_model_vectorized(
     params: Dict[str, float],
     rho0_array: np.ndarray,
-    v_s_array: np.ndarray
+    v_s_array: np.ndarray,
+    sound_speed_km_s: float = 0.22
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Vectorized shock model for multiple shock regions with Mach number.
@@ -115,8 +126,9 @@ def shock_model_vectorized(
     # Gas pressure from shock compression
     Pg = rho0_cgs * v_s_cgs**2 / 3  # erg cm^-3
     
-    # Mach-dependent thermal pressure
-    cs_cgs = 1e6  # cm/s
+    # Mach-dependent thermal pressure  
+    # Use temperature-dependent sound speed
+    cs_cgs = sound_speed_km_s * 1e5  # km/s → cm/s
     P_thermal = rho0_cgs * cs_cgs**2  # erg cm^-3
     P_mach = M**2 * P_thermal / 3  # erg cm^-3
     
@@ -127,8 +139,9 @@ def shock_model_vectorized(
     # Total pressure
     P_total = Pg + P_elastic + P_mach
     
-    # Predictions
-    sigma_v_pred = np.sqrt(P_total / rho0_cgs) / 1e5  # km/s
+    # Direct relation: sigma_1d = M * c_s / sqrt(3)
+    # Bypasses problematic pressure calculation
+    sigma_v_pred = (M * sound_speed_km_s) / np.sqrt(3.0) * np.ones_like(rho0_array)  # km/s, vectorized
     I_CO_pred = C_CO * (Pg + visc_loss)  # K km/s
     
     return sigma_v_pred, I_CO_pred

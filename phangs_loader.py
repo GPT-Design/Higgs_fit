@@ -134,8 +134,15 @@ def extract_shock_fronts(
     # Apply threshold or mask
     if mask is not None:
         shock_mask = mask.astype(bool)
+        print(f"Using provided mask with {np.sum(shock_mask)} pixels")
     else:
-        shock_mask = sigma_v_map > threshold
+        if threshold <= 0.0:
+            # No threshold - use all pixels with finite velocity dispersion
+            shock_mask = (sigma_v_map > 0) & np.isfinite(sigma_v_map)
+            print(f"No velocity threshold applied, found {np.sum(shock_mask)} pixels with finite sigma_v")
+        else:
+            shock_mask = sigma_v_map > threshold
+            print(f"Using velocity dispersion threshold {threshold} km/s, found {np.sum(shock_mask)} pixels")
     
     # Label connected regions (simple approach)
     shock_regions = label_regions(shock_mask, min_pixels=min_pixels)

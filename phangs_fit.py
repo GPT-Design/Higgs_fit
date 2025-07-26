@@ -13,7 +13,7 @@ import csv
 from datetime import datetime
 
 from phangs_loader import load_phangs_data
-from phangs_model import shock_model_vectorized, general_relativity_prediction, calculate_test_statistic
+from phangs_model import shock_model_vectorized, general_relativity_prediction, calculate_test_statistic, sound_speed
 from stats import gauss_logL
 
 
@@ -31,9 +31,10 @@ def prepare_shock_arrays(shocks: list) -> Dict[str, np.ndarray]:
 class ShockLikelihood:
     """Likelihood function for shock fitting."""
     
-    def __init__(self, shock_data: Dict[str, np.ndarray], sigma_frac: float = 0.1):
+    def __init__(self, shock_data: Dict[str, np.ndarray], sigma_frac: float = 0.1, sound_speed_km_s: float = 0.22):
         self.shock_data = shock_data
         self.sigma_frac = sigma_frac
+        self.sound_speed_km_s = sound_speed_km_s
         
         # Extract data
         self.rho0 = shock_data['upstream_density']
@@ -50,7 +51,7 @@ class ShockLikelihood:
         params = {'kappa_E': kappa_E, 'kappa_S': kappa_S, 'log10_M': log10_M}
         
         # Model predictions
-        sigma_v_pred, I_CO_pred = shock_model_vectorized(params, self.rho0, self.v_s)
+        sigma_v_pred, I_CO_pred = shock_model_vectorized(params, self.rho0, self.v_s, self.sound_speed_km_s)
         
         # Gaussian log-likelihoods
         logL_sigma_v = gauss_logL(self.sigma_v_obs, sigma_v_pred, self.sigma_v_err)
@@ -61,7 +62,9 @@ class ShockLikelihood:
 
 
 def fit_shocks_with_iminuit(shock_data: Dict[str, np.ndarray], 
-                           sigma_frac: float = 0.1) -> Dict[str, Any]:
+                           sigma_frac: float = 0.1,
+                           sound_speed: float = 0.22,
+                           fix_kappa: bool = False) -> Dict[str, Any]:
     """Fit shock model using iminuit optimization."""
     try:
         from iminuit import Minuit
@@ -69,16 +72,32 @@ def fit_shocks_with_iminuit(shock_data: Dict[str, np.ndarray],
         raise ImportError("iminuit required for shock fitting. Install with: pip install iminuit")
     
     # Create likelihood function
-    likelihood = ShockLikelihood(shock_data, sigma_frac)
+    likelihood = ShockLikelihood(shock_data, sigma_frac, sound_speed)
     
-    # Set up Minuit with 3 parameters including Mach number
-    m = Minuit(likelihood, kappa_E=0.01, kappa_S=0.05, log10_M=0.8)
-    m.limits["kappa_E"] = (0.0, 0.2)  # Tighter limits
-    m.limits["kappa_S"] = (0.0, 0.5)  # Tighter limits  
-    m.limits["log10_M"] = (0.3, 1.3)  # Flat prior: M = 2-20
-    m.errors["kappa_E"] = 0.001  # Smaller step sizes
-    m.errors["kappa_S"] = 0.005
-    m.errors["log10_M"] = 0.01   # Step size for log10_M
+    # Calculate initial Mach number estimate from median σ/cs
+    median_sigma = np.median(shock_data['sigma_v_obs'])
+    mach_estimate = median_sigma / sound_speed
+    log10_M_init = np.log10(max(1.0, min(100.0, mach_estimate)))  # Clamp to [1, 100]
+    
+    print(f"  Initial Mach estimate: sigma={median_sigma:.1f}/cs={sound_speed:.2f} = M~{mach_estimate:.1f} (log10_M={log10_M_init:.2f})")
+    
+    # Set up Minuit with 3 parameters including Mach number  
+    # Use exact specifications: limits, init, steps
+    if fix_kappa:
+        print("  DIAGNOSTIC MODE: Fixing kappa terms to zero for convergence test")
+        m = Minuit(likelihood, kappa_E=0.0, kappa_S=0.0, log10_M=log10_M_init)
+        m.fixed["kappa_E"] = True
+        m.fixed["kappa_S"] = True
+    else:
+        m = Minuit(likelihood, kappa_E=0.02, kappa_S=0.02, log10_M=log10_M_init)
+        m.limits["kappa_E"] = (0.0, 0.5)  # Exact specification
+        m.limits["kappa_S"] = (0.0, 0.5)  # Exact specification
+        m.errors["kappa_E"] = 0.01  # Exact specification
+        m.errors["kappa_S"] = 0.01  # Exact specification
+    
+    # Mach bounds: M = 1-100 (log10_M: 0-2)
+    m.limits["log10_M"] = (0.0, 2.0)  # Exact specification
+    m.errors["log10_M"] = 0.05   # Larger step size as specified
     
     # Perform fit
     m.migrad()
@@ -308,8 +327,10 @@ def main():
                        help="Use 2D error/weight map instead of 3D noise cube")
     parser.add_argument("--fit-mach", action="store_true", default=True,
                        help="Fit Mach number (log10_M) as third parameter")
-    parser.add_argument("--threshold", type=float, default=15.0,
-                       help="Velocity dispersion threshold (km/s) if no mask")
+    parser.add_argument("--temperature", type=float, default=15.0,
+                       help="Gas temperature [K] used for sound speed")
+    parser.add_argument("--threshold", type=float, default=0.0,
+                       help="Velocity dispersion threshold (km/s) if no mask (default: 0.0, no threshold)")
     parser.add_argument("--min-pixels", type=int, default=5,
                        help="Minimum pixels per shock region")
     parser.add_argument("--sigma-frac", type=float, default=0.1,
@@ -321,6 +342,12 @@ def main():
     parser.add_argument("--formats", nargs='+', choices=['json', 'txt', 'csv'], 
                        default=['json', 'txt', 'csv'],
                        help="Output formats (default: all formats)")
+    parser.add_argument("--dump-sigma-hist", action="store_true",
+                       help="Save velocity dispersion histogram for literature comparison")
+    parser.add_argument("--max-regions", type=int, default=None,
+                       help="Limit number of shock regions for testing (default: use all)")
+    parser.add_argument("--fix-kappa", action="store_true",
+                       help="Freeze kappa terms to zero for first pass convergence test")
     
     args = parser.parse_args()
     
@@ -350,6 +377,7 @@ def main():
     
     # Load data
     print("Loading PHANGS data...")
+    # Use the threshold as specified by user (default 0.0 = no threshold)
     shocks, metadata = load_phangs_data(
         args.cube, 
         mask_file, 
@@ -365,15 +393,38 @@ def main():
     # Prepare data for fitting
     shock_data = prepare_shock_arrays(shocks)
     
+    # Limit regions for testing if requested
+    if args.max_regions is not None and len(shocks) > args.max_regions:
+        print(f"Limiting to first {args.max_regions} shock regions for testing")
+        # Take first N regions
+        for key in shock_data:
+            shock_data[key] = shock_data[key][:args.max_regions]
+    
+    # Calculate sound speed for temperature-aware analysis
+    cs = sound_speed(args.temperature)
+    print(f"Using gas temperature: {args.temperature} K (sound speed: {cs:.2f} km/s)")
+    
     print(f"Shock statistics:")
     print(f"  Velocity dispersion: {np.mean(shock_data['sigma_v_obs']):.1f} ± "
           f"{np.std(shock_data['sigma_v_obs']):.1f} km/s")
+    print(f"  Median sigma_v: {np.median(shock_data['sigma_v_obs']):.1f} km/s")
+    print(f"  Range: {np.min(shock_data['sigma_v_obs']):.1f} - {np.max(shock_data['sigma_v_obs']):.1f} km/s")
     print(f"  CO brightness: {np.mean(shock_data['I_CO_obs']):.3f} ± "
           f"{np.std(shock_data['I_CO_obs']):.3f} K km/s")
     
+    # Literature comparison for CO velocity dispersion
+    if np.median(shock_data['sigma_v_obs']) > 0:
+        literature_range = (6.0, 15.0)  # km/s from literature
+        median_sigma = np.median(shock_data['sigma_v_obs'])
+        if literature_range[0] <= median_sigma <= literature_range[1]:
+            print(f"  OK: Median sigma_v within literature range {literature_range[0]}-{literature_range[1]} km/s")
+        else:
+            print(f"  WARNING: Median sigma_v outside literature range {literature_range[0]}-{literature_range[1]} km/s")
+    
     # Perform fitting
-    print(f"\nFitting {len(shocks)} shock regions...")
-    result = fit_shocks_with_iminuit(shock_data, args.sigma_frac)
+    n_regions = len(shock_data['sigma_v_obs'])
+    print(f"\nFitting {n_regions} shock regions...")
+    result = fit_shocks_with_iminuit(shock_data, args.sigma_frac, sound_speed=cs, fix_kappa=args.fix_kappa)
     
     # Print results
     print_fit_results(result, len(shocks))
@@ -389,11 +440,51 @@ def main():
         'noise_file': str(args.noise),
         'noise2d': args.noise2d,
         'fit_mach': args.fit_mach,
+        'temperature': args.temperature,
+        'sound_speed': cs,
         'threshold': args.threshold,
         'sigma_frac': args.sigma_frac,
     }
     
     saved_files = []
+    
+    # Save velocity dispersion histogram if requested
+    if args.dump_sigma_hist:
+        sigma_hist_file = args.output / f"{args.prefix}_sigma_histogram.txt"
+        sigma_values = shock_data['sigma_v_obs']
+        
+        with open(sigma_hist_file, 'w') as f:
+            f.write("# Velocity Dispersion Histogram Analysis\n")
+            f.write(f"# Galaxy: {args.prefix}\n")
+            f.write(f"# Temperature: {args.temperature} K (cs = {cs:.2f} km/s)\n")
+            f.write(f"# Number of shock regions: {len(sigma_values)}\n")
+            f.write("#\n")
+            f.write("# Literature comparison: CO velocity dispersion typically 6-15 km/s\n")
+            f.write(f"# Mean: {np.mean(sigma_values):.2f} km/s\n")
+            f.write(f"# Median: {np.median(sigma_values):.2f} km/s\n")
+            f.write(f"# Std: {np.std(sigma_values):.2f} km/s\n")
+            f.write(f"# Min: {np.min(sigma_values):.2f} km/s\n")
+            f.write(f"# Max: {np.max(sigma_values):.2f} km/s\n")
+            f.write("#\n")
+            f.write("# Histogram bins (center, count, fraction)\n")
+            f.write("# sigma_v_center[km/s]  count  fraction\n")
+            
+            # Create histogram
+            bins = np.linspace(0, max(30, np.max(sigma_values) + 2), 31)  # 1 km/s bins up to 30 or max+2
+            hist, bin_edges = np.histogram(sigma_values, bins=bins)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            
+            for center, count in zip(bin_centers, hist):
+                fraction = count / len(sigma_values)
+                f.write(f"{center:8.1f}        {count:5d}  {fraction:8.4f}\n")
+            
+            # Add individual values
+            f.write("#\n# Individual shock region sigma_v values:\n")
+            for i, sigma in enumerate(sigma_values):
+                f.write(f"# Region {i+1:3d}: {sigma:.2f} km/s\n")
+        
+        saved_files.append(str(sigma_hist_file))
+        print(f"Velocity dispersion histogram saved to: {sigma_hist_file}")
     
     # Save JSON format (original)
     if 'json' in args.formats:
