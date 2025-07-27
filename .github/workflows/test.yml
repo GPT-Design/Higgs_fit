@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, 3.11]
+        python-version: [3.9, 3.11, 3.12]
 
     steps:
     - uses: actions/checkout@v4
@@ -29,6 +29,9 @@ jobs:
         pip install -e .
         # Optional: astropy for PHANGS tests (may add scipy for full functionality)
         pip install astropy scipy || echo "Astropy/scipy installation failed - PHANGS tests may be skipped"
+
+     - name: Add repo to PYTHONPATH   # <─ new step
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
     
     - name: Run tests
       run: |
