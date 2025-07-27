@@ -1,4 +1,4 @@
-# version 0.3
+# version 0.4
 """
 Entropy helper functions and profile registry for the α‑aware Higgs fit.
 """

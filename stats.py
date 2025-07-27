@@ -1,4 +1,4 @@
-# version 0.3
+# version 0.4
 """
 Statistical goodness-of-fit utilities for the Higgs entropy fit.
 
@@ -116,5 +116,62 @@ def log_poisson_likelihood(
     ll[~mask] -= gammaln(counts[~mask] + 1)
 
     return float(ll.sum())
+
+
+# -----------------------------------------------------------------------------
+# Gaussian log-likelihood (for PHANGS shock fitting)
+# -----------------------------------------------------------------------------
+
+def gauss_logL(
+    obs: np.ndarray,
+    pred: np.ndarray,
+    sigma: np.ndarray
+) -> float:
+    """Return the Gaussian log-likelihood: -0.5 * Σ[(obs - pred)/σ]².
+    
+    Parameters
+    ----------
+    obs : observed values
+    pred : predicted/model values  
+    sigma : uncertainties on observed values
+    
+    Returns
+    -------
+    logL : total Gaussian log-likelihood
+    
+    Notes
+    -----
+    Excludes normalization constants (2π)^(-N/2) since they cancel in likelihood ratios.
+    """
+    obs = np.asarray(obs, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    
+    # Validate input arrays
+    if obs.shape != pred.shape or obs.shape != sigma.shape:
+        raise ValueError(f"Shape mismatch: obs{obs.shape}, pred{pred.shape}, sigma{sigma.shape}")
+    
+    if obs.size == 0:
+        raise ValueError("Input arrays cannot be empty")
+    
+    # Validate uncertainties are positive
+    if np.any(sigma <= 0):
+        raise ValueError("sigma values must be positive")
+    
+    # Validate all values are finite
+    if not np.all(np.isfinite(obs)):
+        raise ValueError("obs values must be finite")
+    
+    if not np.all(np.isfinite(pred)):
+        raise ValueError("pred values must be finite")
+    
+    if not np.all(np.isfinite(sigma)):
+        raise ValueError("sigma values must be finite")
+    
+    # Compute chi-squared terms
+    chi2_terms = ((obs - pred) / sigma) ** 2
+    
+    # Return log-likelihood (negative of chi-squared/2)
+    return float(-0.5 * np.sum(chi2_terms))
 
 # end of stats.py

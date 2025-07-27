@@ -11,10 +11,31 @@ A Python package for fitting Higgs boson data with entropy-aware models, support
 - **Robust Validation**: Comprehensive input validation and error handling
 - **Auto-Detection**: Automatic file format detection and parsing
 
+## Quick Start
+
+```bash
+# 1. Set up environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install iminuit emcee  # For continuous optimization
+
+# 2. Run calibration test
+python fit.py --calibration
+
+# 3. Grid sweep on toy data
+python sweeps.py --calibration
+
+# 4. Batch process all LIGO data
+python sweeps.py  # Grid sweep (fast)
+python batch_fit.py  # Continuous optimization (precise)
+```
+
 ## Installation
 
 ```bash
 pip install -r requirements.txt
+pip install iminuit emcee  # Optional: for continuous optimization
 ```
 
 ## Dependencies
@@ -23,19 +44,54 @@ pip install -r requirements.txt
 - pandas >= 1.3.0
 - scipy >= 1.7.0
 - h5py >= 3.1.0
+- iminuit >= 2.0 (optional, for continuous optimization)
+- emcee >= 3.0 (optional, for MCMC sampling)
 
 ## Usage
 
-### Basic Usage
+### Grid Sweeps (Fast)
 
 ```bash
-# Run entropy fitting on a data file
-python cli.py <data_file> [options]
+# Grid sweep on toy data
+python sweeps.py --calibration
 
-# Examples:
-python cli.py toy.csv --entropy-shape log
-python cli.py "H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5" --entropy-shape log
-python cli.py "data/V1/V-V1_GWOSC_16KHZ_R1-1245035064-32.hdf5"
+# Grid sweep on specific file
+python sweeps.py data/H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5
+
+# Batch process all files in data/
+python sweeps.py
+```
+
+### Continuous Optimization (Precise)
+
+```bash
+# Continuous fit on toy data
+python fit.py --calibration
+
+# Continuous fit on specific file
+python fit.py data/H-H1_GWOSC_16KHZ_R1-1126259447-32.hdf5
+
+# Batch continuous fitting (all files)
+python batch_fit.py
+```
+
+### PHANGS Shock Fitting
+
+```bash
+# Fit PHANGS-ALMA CO shock data with 3-parameter model
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits
+
+# Parameters: kappa_E, kappa_S (tensor couplings), log10_M (Mach number)
+# Output: Multiple formats with MINOS errors and significance vs GR
+
+# Specify output formats (default: all formats)
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats json txt csv
+
+# Only human-readable text output
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats txt
+
+# Only spreadsheet format
+python phangs_fit.py data/ngc4254_co21.fits --mask data/shock_mask.fits --formats csv
 ```
 
 ### File Management
@@ -62,6 +118,7 @@ Options include:
 - `--kappa-steps STEPS`: Number of κ steps (default: 50)
 - `--c-steps STEPS`: Number of c steps (default: 25)
 - `--output OUTPUT`: Output directory (default: results)
+- `--formats {json,txt,csv}`: Output formats (default: all formats)
 
 ## Data Formats
 
@@ -118,12 +175,51 @@ Higgs_fit/
 
 ## Output
 
-Results are saved to `results/grid_results.csv` with columns:
-- `kappa`: Entropy coupling coefficient
-- `c`: Log-running coefficient
-- `logL`: Log-likelihood value
+### Grid Sweeps
+- `results/grid_results.csv`: Detailed parameter grid with log-likelihood values
+- `results/summary_results.csv`: Best-fit parameters for each data file
 
-The best-fit parameters are printed to console.
+### Continuous Fits
+- `results/fit_results.csv`: Precise optimization results with uncertainties
+- `results/fit_results_master.csv`: Batch continuous fitting results
+
+### PHANGS Shock Fitting Results
+
+The PHANGS shock fitting now supports multiple output formats:
+
+#### JSON Format (Machine-readable)
+- `shock_fit_results.json`: Complete results with all parameters, errors, and metadata
+- Includes MINOS asymmetric errors and statistical significance
+- Suitable for automated analysis and data pipelines
+
+#### TXT Format (Human-readable)
+- `shock_fit_results.txt`: Formatted text report for easy reading
+- Contains all fit parameters with uncertainties
+- Statistical significance assessment vs General Relativity
+- Analysis timestamp and data file information
+
+#### CSV Format (Spreadsheet-compatible)
+- `shock_fit_results.csv`: Single-row data suitable for Excel/LibreOffice
+- All parameters, errors, and statistics in separate columns
+- Perfect for combining multiple analysis results
+- Includes calculated p-values and sigma equivalents
+
+**Example outputs:**
+```
+phangs_results/
+├── shock_fit_results.json    # Complete machine-readable results
+├── shock_fit_results.txt     # Human-readable summary
+└── shock_fit_results.csv     # Spreadsheet-compatible data
+```
+
+### Testing
+```bash
+# Run unit tests
+python -m pytest tests/test_fit.py -v
+
+# Manual test
+python tests/test_fit.py
+```
 
 ## Example Results
 
