@@ -26,6 +26,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install iminuit emcee pytest
+        pip install -e .
         # Optional: astropy for PHANGS tests (may add scipy for full functionality)
         pip install astropy scipy || echo "Astropy/scipy installation failed - PHANGS tests may be skipped"
     
