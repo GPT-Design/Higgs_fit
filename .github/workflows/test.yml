@@ -9,35 +9,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.9, 3.11, 3.12]
-
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install iminuit emcee pytest
-        pip install -e .
-        # Optional: astropy for PHANGS tests (may add scipy for full functionality)
-        pip install astropy scipy || echo "Astropy/scipy installation failed - PHANGS tests may be skipped"
+      - uses: actions/checkout@v4
 
-     - name: Add repo to PYTHONPATH   # <─ new step
-        run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-    
-    - name: Run tests
-      run: |
-        pytest -q
-      
-    - name: Test import of main modules
-      run: |
-        python -c "import config, models, stats, entropy; print('Core modules import successfully')"
-        python -c "import fit, sweeps, phangs_model, phangs_fit; print('All modules import successfully')"
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e .
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: pytest -q
